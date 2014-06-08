@@ -76,6 +76,10 @@
 	 * devicemotion
 	 * deviceorientation
 	 */
+	gyro.getFeatureList = function(){
+		return ['MozOrientation', 'devicemotion', 'deviceorientation'];
+	};
+
 	gyro.hasFeature = function(feature) {
 		for (var i in features) {
 			if (feature == features[i]) {
@@ -143,13 +147,12 @@
 	function quaternionToEuler(q) {
 		var s = 180 / Math.PI;
 		var front = quaternionApply({x:0,y:1,z:0}, q);
-		console.log(front);
 		var alpha = (front.x == 0 && front.y == 0) ?
 			0 : -Math.atan2(front.x, front.y);
 		var beta = Math.atan2(front.z,Math.sqrt(front.x*front.x+front.y*front.y));
 		var zgSide = {
-			x: Math.cos(alpha), 
-			y: Math.sin(alpha), 
+			x: Math.cos(alpha),
+			y: Math.sin(alpha),
 			z: 0
 		};
 		var zgUp = {
@@ -179,63 +182,53 @@
 	/**
 	 * @private
 	 */
+	function setupListeners() {
+		gyro.getFeatures().forEach(function(item){
+			if('on'+item.toLowerCase() in window){
+				features.push(item);
+			}
+		});
+		function MozOrientationInitListener (e) {
+			measurements.x = e.x - calibration.x;
+			measurements.y = e.y - calibration.y;
+			measurements.z = e.z - calibration.z;
+		}
+		function deviceMotionListener (e) {
+			measurements.x = e.accelerationIncludingGravity.x - calibration.x;
+			measurements.y = e.accelerationIncludingGravity.y - calibration.y;
+			measurements.z = e.accelerationIncludingGravity.z - calibration.z;
+		}
+		function deviceOrientationListener (e) {
+			var calib = eulerToQuaternion({
+				alpha: calibration.rawAlpha,
+				beta: calibration.rawBeta,
+				gamma: calibration.rawGamma
+			});
+			calib.x *= -1; calib.y *= -1; calib.z *= -1;
+
+			var raw = eulerToQuaternion({
+				alpha: e.alpha, beta: e.beta, gamma: e.gamma
+			});
+			var calibrated = quaternionMultiply(calib, raw);
+			var calibEuler = quaternionToEuler(calibrated);
+
+			measurements.alpha = calibEuler.alpha;
+			measurements.beta = calibEuler.beta;
+			measurements.gamma = calibEuler.gamma;
+
+			measurements.rawAlpha = e.alpha;
+			measurements.rawBeta = e.beta;
+			measurements.rawGamma = e.gamma;
+		}
+
+		window.addEventListener('MozOrientation', MozOrientationInitListener, true);
+		window.addEventListener('devicemotion', deviceMotionListener, true);
+		window.addEventListener('deviceorientation', deviceOrientationListener, true);
+	}
 	// it doesn't make sense to depend on a "window" module
 	// since deviceorientation & devicemotion make just sense in the browser
 	// so old school test used.
 	if (window && window.addEventListener) {
-		function setupListeners() {
-			function MozOrientationInitListener (e) {
-				features.push('MozOrientation');
-				e.target.removeEventListener('MozOrientation', MozOrientationInitListener, true);
-
-				e.target.addEventListener('MozOrientation', function(e) {
-					measurements.x = e.x - calibration.x;
-					measurements.y = e.y - calibration.y;
-					measurements.z = e.z - calibration.z;
-				}, true);
-			}
-			function deviceMotionListener (e) {
-				features.push('devicemotion');
-				e.target.removeEventListener('devicemotion', deviceMotionListener, true);
-				
-				e.target.addEventListener('devicemotion', function(e) {
-					measurements.x = e.accelerationIncludingGravity.x - calibration.x;
-					measurements.y = e.accelerationIncludingGravity.y - calibration.y;
-					measurements.z = e.accelerationIncludingGravity.z - calibration.z;
-				}, true);
-			}
-			function deviceOrientationListener (e) {
-				features.push('deviceorientation');
-				e.target.removeEventListener('deviceorientation', deviceOrientationListener, true);
-				
-				e.target.addEventListener('deviceorientation', function(e) {
-					var calib = eulerToQuaternion({
-						alpha: calibration.rawAlpha, 
-						beta: calibration.rawBeta, 
-						gamma: calibration.rawGamma
-					});
-					calib.x *= -1; calib.y *= -1; calib.z *= -1; 
-
-					var raw = eulerToQuaternion({
-						alpha: e.alpha, beta: e.beta, gamma: e.gamma
-					});
-					var calibrated = quaternionMultiply(calib, raw);
-					var calibEuler = quaternionToEuler(calibrated);
-
-					measurements.alpha = calibEuler.alpha;
-					measurements.beta = calibEuler.beta;
-					measurements.gamma = calibEuler.gamma;
-
-					measurements.rawAlpha = e.alpha;
-					measurements.rawBeta = e.beta;
-					measurements.rawGamma = e.gamma;
-				}, true);
-			}
-
-			window.addEventListener('MozOrientation', MozOrientationInitListener, true);
-			window.addEventListener('devicemotion', deviceMotionListener, true);
-			window.addEventListener('deviceorientation', deviceOrientationListener, true);
-		}
 		setupListeners();
 	}
 
